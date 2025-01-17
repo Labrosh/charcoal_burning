@@ -18,6 +18,35 @@ player_resources = {
     "charcoal_limit": 5
 }  # This will be reworked someday
 
+chop_flavor = [
+    "The forest echoes with the rhythmic sound of your axe.",
+    "Sweat drips as you swing your axe steadily.",
+    "The crisp smell of freshly cut wood fills the air.",
+    "A cool breeze rustles the leaves as you work.",
+    "You pause for a moment, catching your breath.",
+    "The blade bites deep into the trunk with each swing.",
+    "A bird chirps nearby, seemingly unbothered by your work.",
+    "The pile of chopped wood grows steadily.",
+    "The axe feels heavy, but you press on.",
+    "The sun filters through the trees, warming your back.",
+    "Your hands ache, but you feel a sense of accomplishment.",
+    "A squirrel darts across the forest floor, watching you cautiously.",
+    "The satisfying crack of splitting wood keeps you going.",
+    "You clear away some underbrush to reach a better tree.",
+    "A patch of sunlight highlights the tree you’re chopping.",
+    "The forest seems alive with sounds as you work.",
+    "The steady rhythm of chopping wood feels oddly calming.",
+    "A small chip of bark flies past your face.",
+    "The forest air feels fresh, invigorating your effort.",
+    "You hear the distant call of a bird as you swing your axe."
+]
+collect_flavor = [
+    "The charcoal smells sharp and smoky as you gather it.",
+    "Blackened chunks of charcoal tumble into your hands.",
+    "The kiln is still warm as you dig out the charcoal.",
+    "You wipe soot from your hands as you work.",
+]
+
 
 # Let's put all the functions up here.
 
@@ -62,13 +91,27 @@ def chop_wood():
     game_ticks += 1
     wood_random = random.choice(wood_options)
 
-    if player_resources["wood"] + wood_random > player_resources["wood_limit"]:
-        print("\nYou can't carry any more wood! Consider upgrading your storage.\n")
+    # Calculate available storage space
+    space_left = player_resources["wood_limit"] - player_resources["wood"]
+
+    if space_left <= 0:
+        print("\nYour wood storage is full! Consider upgrading your storage.")
+    elif wood_random > space_left:
+        # Add only the amount that fits
+        player_resources["wood"] += space_left
+        show_art("chop")
+        print(f"\nYou managed to gather {space_left} wood, but {wood_random - space_left} wood was wasted due to storage limits.")
     else:
+        # Add all the wood if there's enough space
         player_resources["wood"] += wood_random
         show_art("chop")
         print(f"\nYou managed to gather {wood_random} wood.")
-        print(f"You have {player_resources['wood']} wood so far (Limit: {player_resources['wood_limit']}).\n")
+
+    # Flavor text is always shown after a chop
+    print(random.choice(chop_flavor))
+    print(f"You have {player_resources['wood']} wood so far (Limit: {player_resources['wood_limit']}).\n")
+
+    display_time()
 
 
 def build_kiln():  # Have to have a kiln to burn logs
@@ -111,15 +154,21 @@ def collect_charcoal():
         game_ticks += 1
         charcoal_random = random.randint(1, 6)
 
-        if player_resources["charcoal"] + charcoal_random > player_resources["charcoal_limit"]:
-            print("\nYou can't store all this charcoal! Consider upgrading your storage.\n")
+        space_left = player_resources["charcoal_limit"] - player_resources["charcoal"]
+
+        if space_left <= 0:
+            print("\nYour charcoal storage is full! Consider upgrading your storage.")
+        elif charcoal_random > space_left:
+            player_resources["charcoal"] += space_left
+            print(f"\nYou collected {space_left} charcoal, but {charcoal_random - space_left} was wasted due to storage limits.")
         else:
             player_resources["charcoal"] += charcoal_random
-            player_resources["kiln_status"] = "unbuilt"
-            show_art("collect")
-            print(f"\nYou dig out the charcoal, breaking the kiln and collecting {charcoal_random} charcoal.")
-            print(
-                f"You have {player_resources['charcoal']} charcoal so far (Limit: {player_resources['charcoal_limit']}).\n")
+            print(f"\nYou collected {charcoal_random} charcoal.")
+        print(random.choice(collect_flavor))
+        player_resources["kiln_status"] = "unbuilt"  # Reset kiln
+        print(f"You have {player_resources['charcoal']} charcoal so far (Limit: {player_resources['charcoal_limit']}).\n")
+        input(press_enter)
+
 
 
 def upgrade_storage():
@@ -132,6 +181,7 @@ def upgrade_storage():
         player_resources["wood"] -= upgrade_cost
         player_resources["wood_limit"] *= 2
         player_resources["charcoal_limit"] *= 2
+        show_art("upgrade")
         print("\nYou upgraded your storage!")
         print(
             f"New wood limit: {player_resources['wood_limit']}, New charcoal limit: {player_resources['charcoal_limit']}.\n")
@@ -140,40 +190,63 @@ def upgrade_storage():
 
 
 def check_kiln():
-    if player_resources["kiln_status"] == "charcoal ready":
-        print("The kiln is silent, and the smoke has vanished. The charcoal is ready. Try collect to collect it.\n")
+    # Check if the kiln is in a valid state
+    if player_resources["kiln_status"] not in ["built - lit", "charcoal ready"]:
+        print("\nYou don't have a lit kiln to check.\n")
         return
 
-    if player_resources["kiln_status"] != "built - lit":
-        print("You don't have a lit kiln to check.\n")
-        return
-
-    # Decrease burn time
+    # Only advance time if there is something to check
     if player_resources["burn_time"] > 0:
+        global game_ticks
+        game_ticks += 1  # Advance time for meaningful checks
         player_resources["burn_time"] -= 1
 
-    # Smoke hints based on burn time
-    burn_hints = [
-        (10, "Thick white smoke billows from the kiln. The wood is still releasing moisture.\n"),
-        (5, "The smoke has thinned and turned a dull gray. The fire is steady.\n"),
-        (2, "A thin blue smoke drifts from the kiln. The wood has almost fully charred.\n"),
-        (1, "The kiln is nearly finished. Just a bit longer...\n"),
-    ]
+        burn_hints = [
+            (10, "Thick white smoke billows from the kiln. The wood is still releasing moisture."),
+            (5, "The smoke has thinned and turned a dull gray. The fire is steady."),
+            (2, "A thin blue smoke drifts from the kiln. The wood has almost fully charred."),
+            (1, "The kiln is nearly finished. Just a bit longer...")
+        ]
 
-    for time, hint in burn_hints:
-        if player_resources["burn_time"] >= time:
-            print(hint)
-            break
-
-    # When burn time hits 0
-    if player_resources["burn_time"] == 0:
-        print("The kiln is silent, and the smoke has vanished. The charcoal is ready. Try to collect it.\n")
+        for time, hint in burn_hints:
+            if player_resources["burn_time"] >= time:
+                print(hint)
+                break
+    elif player_resources["burn_time"] == 0 and player_resources["kiln_status"] == "built - lit":
+        # When burning is complete
+        print("\nThe kiln is silent, and the smoke has vanished. The charcoal is ready.\n")
         player_resources["kiln_status"] = "charcoal ready"
+    else:
+        # Inform the player there's no need to check
+        print("\nThere’s nothing new to see. Be patient and let the kiln do its work.\n")
 
 
-def dev_mode():  # I was thinking this would be good, we could add more 'cheats' later
-    player_resources["wood"] += 100
-    print(f"\n(Dev Cheat) You now have {player_resources['wood']} wood.\n")
+
+
+def dev_mode():
+    show_art("cheat")
+    print("\n(Dev Mode Activated) Choose an option:")
+    print("1. Add 100 wood")
+    print("2. Set wood to max")
+    print("3. Set charcoal to max")
+    print("4. Skip kiln burn time")
+    choice = input("Enter the number of your choice: ").strip()
+
+    if choice == "1":
+        player_resources["wood"] += 100
+        print(f"\nYou now have {player_resources['wood']} wood.\n")
+    elif choice == "2":
+        player_resources["wood"] = player_resources["wood_limit"]
+        print(f"\nWood storage is now full: {player_resources['wood']} / {player_resources['wood_limit']}.\n")
+    elif choice == "3":
+        player_resources["charcoal"] = player_resources["charcoal_limit"]
+        print(f"\nCharcoal storage is now full: {player_resources['charcoal']} / {player_resources['charcoal_limit']}.\n")
+    elif choice == "4":
+        player_resources["burn_time"] = 1
+        print("\nKiln burn time skipped to 1 hour.\n")
+    else:
+        print("\nInvalid choice. Exiting dev mode.\n")
+
 
 
 def quit_game():  # We all have to leave at some breakpoint
@@ -202,6 +275,7 @@ def show_help():
 
 
 def show_storage():
+    show_art("storage")
     print("\nYour current storage:")
     print(f"  - Wood: {player_resources['wood']} / {player_resources['wood_limit']}")
     print(f"  - Charcoal: {player_resources['charcoal']} / {player_resources['charcoal_limit']}")
@@ -252,8 +326,36 @@ ascii_art = {
     /  _____  \  
    |  /     \  |  You collect the charcoal!
     \_______/  
+    """,
+    "storage": r"""
+       _______
+      | WOOD  |
+      | SHED  |
+      |       |     STORAGE
+      |_______|
+    """,
+    "upgrade": r"""
+         _______
+        |  NEW  |      STORAGE UPGRADED!
+        |  WOOD |
+        |  SHED |
+        |_______|
+    """,
+    "time": r"""
+       ___
+     _/   \_
+    |  12   |     TIME CHECK
+    |       |
+    |_______|
+    """,
+    "cheat": r"""
+      DEV MODE
+       (o_o)
+      <)   )>
+       || ||
     """
 }
+
 
 commands = {
     "chop": {
