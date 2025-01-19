@@ -5,18 +5,28 @@ import sys
 # Let's put dumb variables up here
 press_enter = "Press enter to continue... "
 bad_reply = "Sorry, I don't know that"
-wood_options = [1, 1, 1, 2, 2, 2, 3, 3,
-                4]  # Possible wood values - Testers complained about how bad the rates were - maybe revisit.
+wood_options = [1, 1, 1, 2, 2, 2, 3, 3, 4]
+better_axe_options = [2, 3, 3, 4, 4, 5, 5, 6, 7] # WE REVISITED!
 game_ticks = 0
 
+# This will be reworked someday
 player_resources = {
     "wood": 0,
     "charcoal": 0,
     "kiln_status": "unbuilt",
     "burn_time": 0,
     "wood_limit": 10,
-    "charcoal_limit": 5
-}  # This will be reworked someday
+    "charcoal_limit": 5,
+    "seen_trader_message": False,
+    "gold": 0,  # Initial gold amount
+    "last_trader_day": 0,  # Tracks the last trader visit
+    "trader_available": False,  # No trader available initially
+    "better_axe": False,
+    "gold_goal": 100,  # Gold needed to end the game
+    "game_complete": False,  # Tracks if the game is finished
+    "declined_retirement": False,
+}
+
 
 chop_flavor = [
     "The forest echoes with the rhythmic sound of your axe.",
@@ -89,7 +99,11 @@ def show_intro():
 def chop_wood():
     global game_ticks
     game_ticks += 1
-    wood_random = random.choice(wood_options)
+
+    if game_ticks % 24 == 0 and not player_resources.get("trader_available", False):
+        trader()
+
+    wood_random = random.choice(better_axe_options if player_resources["better_axe"] else wood_options)
 
     # Calculate available storage space
     space_left = player_resources["wood_limit"] - player_resources["wood"]
@@ -153,6 +167,8 @@ def collect_charcoal():
         global game_ticks
         game_ticks += 1
         charcoal_random = random.randint(1, 6)
+        if game_ticks % 24 == 0 and not player_resources.get("trader_available", False):
+            trader()
 
         space_left = player_resources["charcoal_limit"] - player_resources["charcoal"]
 
@@ -221,6 +237,146 @@ def check_kiln():
         print("\nThere’s nothing new to see. Be patient and let the kiln do its work.\n")
 
 
+def trader():
+    global game_ticks
+
+    # Check if a trader is already available
+    if player_resources.get("trader_available", False):
+        return  # Do nothing if a trader is already nearby
+
+    # Initial trader message
+    if player_resources["charcoal"] >= 1 and not player_resources["seen_trader_message"]:
+        print("Hey, you've collected some charcoal! Keep an eye out for traders who may want to buy it.")
+        player_resources["seen_trader_message"] = True
+        return
+
+    # Check if enough time has passed for a trader to visit
+    days_since_last_trader = game_ticks // 24
+    if player_resources.get("last_trader_day", 0) < days_since_last_trader - 3:
+        print("\nYou hear rumors of a trader heading your way. He should arrive soon!")
+        player_resources["trader_available"] = True
+        player_resources["last_trader_day"] = days_since_last_trader
+
+
+def visit_trader():
+    if not player_resources.get("trader_available", False):
+        print("\nNo traders are nearby. Keep gathering charcoal and check back later!")
+        print("Rumors say traders visit every few days, so be patient.")
+        return
+
+    print("\nA trader arrives, looking for charcoal!")
+
+    # Trader personalities
+    trader_personality = random.choice([
+        ("grumpy", "A grumpy trader mutters under his breath as he approaches."),
+        ("cheerful", "A cheerful trader greets you with a wide smile, carrying a large sack."),
+        ("mysterious", "A mysterious trader eyes you cautiously, his face hidden under a hood."),
+        ("talkative", "A talkative trader rambles about the latest market gossip as he sets up."),
+        ("hurried", "A hurried trader rushes in, eager to complete his business quickly.")
+    ])
+    personality_type, personality_text = trader_personality
+    print(personality_text)
+
+    # Offer to sell charcoal
+    charcoal_available = player_resources["charcoal"]
+    amount_to_buy = random.randint(1, min(charcoal_available, 5))  # Randomize up to 5 or available
+    price_per_charcoal = random.randint(2, 5)  # Randomize price between 2 and 5 coins
+    total_price = amount_to_buy * price_per_charcoal
+
+    print(f"The trader offers to buy {amount_to_buy} charcoal for {total_price} coins.")
+    choice = input("Do you accept the offer? (yes/no): ").strip().lower()
+
+    if choice == "yes":
+        if charcoal_available >= amount_to_buy:
+            player_resources["charcoal"] -= amount_to_buy
+            player_resources["gold"] = player_resources.get("gold", 0) + total_price
+            print(f"You sold {amount_to_buy} charcoal and earned {total_price} coins.")
+            print(f"Current charcoal: {player_resources['charcoal']}")
+            print(f"Current gold: {player_resources['gold']}\n")
+        else:
+            print("Something went wrong; you don't have enough charcoal to sell.")  # Failsafe
+    else:
+        print("The trader leaves, disappointed.\n")
+
+    # Offer the better axe, with personality-specific dialog
+    if not player_resources["better_axe"]:
+        if personality_type == "grumpy":
+            print("\n'You look like you could use a better axe,' the trader grumbles.")
+        elif personality_type == "cheerful":
+            print("\n'I’ve got the perfect tool for you! A better axe to make your life easier!'")
+        elif personality_type == "mysterious":
+            print("\nThe trader leans in and whispers, 'A tool for the ambitious. Interested?'")
+        elif personality_type == "talkative":
+            print("\n'Everyone’s been asking for this axe,' the trader chatters. 'Want one?'")
+        elif personality_type == "hurried":
+            print("\n'Quickly now, I’ve got a sturdy axe for sale. Take it or leave it!'")
+
+        print("The trader offers to sell you the better axe for 50 gold.")
+        axe_choice = input("Do you want to buy the better axe for 50 gold? (yes/no): ").strip().lower()
+        if axe_choice == "yes":
+            if player_resources["gold"] >= 50:
+                player_resources["gold"] -= 50
+                player_resources["better_axe"] = True
+                print("You bought the better axe! Your wood-gathering efficiency has improved.")
+            else:
+                print(
+                    f"You don't have enough gold to buy the better axe. (You have {player_resources['gold']}/50 gold.)")
+        else:
+            print("The trader shrugs and puts the axe away. 'Suit yourself.'")
+
+    # Reset trader availability
+    player_resources["trader_available"] = False
+
+
+def check_endgame():
+    if player_resources["gold"] >= player_resources["gold_goal"] and not player_resources["game_complete"]:
+        if player_resources.get("declined_retirement", False):
+            return  # Skip the check if the player previously declined retirement
+        print("\nCongratulations! You've saved enough gold to leave the charcoal business.")
+        print("Do you want to retire and end the game?")
+
+        choice = input("Type 'yes' to retire or 'no' to keep playing: ").strip().lower()
+        if choice == "yes":
+            end_game()
+        elif choice == "no":
+            print("You decide to keep working. If you change your mind, type 'retire' to leave the charcoal business anytime.")
+            player_resources["declined_retirement"] = True
+
+
+
+def retire():
+    if player_resources["gold"] >= player_resources["gold_goal"]:
+        end_game()
+    else:
+        print(f"\nYou don’t have enough gold to retire yet. You need {player_resources['gold_goal']} gold to leave the charcoal business.")
+
+
+
+def end_game():
+    print("\n--- Final Summary ---")
+    print(f"Total wood gathered: {player_resources['wood']}")
+    print(f"Total charcoal created: {player_resources['charcoal']}")
+    print(f"Total gold earned: {player_resources['gold']}")
+    print(f"Days spent in the forest: {game_ticks // 24}")
+
+    print("\nYou've worked hard and saved enough gold to leave the charcoal business behind.")
+    print("A brighter future awaits you. Congratulations!")
+    player_resources["game_complete"] = True
+    sys.exit()  # Exit the game
+
+
+def show_debug():
+    print("\nDEBUG INFORMATION:")
+    print(f"  - Game Ticks: {game_ticks}")
+    print(f"  - Last Trader Day: {player_resources.get('last_trader_day', 0)}")
+    print(f"  - Trader Available: {player_resources.get('trader_available', False)}")
+    print(f"  - Wood: {player_resources['wood']} / {player_resources['wood_limit']}")
+    print(f"  - Charcoal: {player_resources['charcoal']} / {player_resources['charcoal_limit']}")
+    print(f"  - Gold: {player_resources['gold']}\n")
+    print(f"  - Days Until Next Trader: {max(0, (player_resources['last_trader_day'] + 3) - (game_ticks // 24))}")
+    print(f"  - Better Axe Owned: {player_resources['better_axe']}")
+    print(f"  - Gold Goal: {player_resources['gold_goal']}")
+    print(f"  - Game Complete: {player_resources['game_complete']}")
 
 
 def dev_mode():
@@ -240,13 +396,13 @@ def dev_mode():
         print(f"\nWood storage is now full: {player_resources['wood']} / {player_resources['wood_limit']}.\n")
     elif choice == "3":
         player_resources["charcoal"] = player_resources["charcoal_limit"]
-        print(f"\nCharcoal storage is now full: {player_resources['charcoal']} / {player_resources['charcoal_limit']}.\n")
+        print(
+            f"\nCharcoal storage is now full: {player_resources['charcoal']} / {player_resources['charcoal_limit']}.\n")
     elif choice == "4":
         player_resources["burn_time"] = 1
         print("\nKiln burn time skipped to 1 hour.\n")
     else:
-        print("\nInvalid choice. Exiting dev mode.\n")
-
+        print("\nInvalid choice. Please enter a valid number (1-4).\n")
 
 
 def quit_game():  # We all have to leave at some breakpoint
@@ -279,6 +435,7 @@ def show_storage():
     print("\nYour current storage:")
     print(f"  - Wood: {player_resources['wood']} / {player_resources['wood_limit']}")
     print(f"  - Charcoal: {player_resources['charcoal']} / {player_resources['charcoal_limit']}")
+    print(f"  - Gold: {player_resources['gold']} / {player_resources['gold_goal']} (Goal to retire)")
 
     # Add notes if the player is near or at storage limits
     if player_resources["wood"] == player_resources["wood_limit"]:
@@ -412,6 +569,21 @@ commands = {
         "function": show_storage,
         "description": "Check your current resources and storage limits.",
         "showInHelp": True
+    },
+    "visit": {
+        "function": visit_trader,
+        "description": "Interact with a trader to sell your charcoal.",
+        "showInHelp": True
+    },
+    "debug": {
+        "function": show_debug,
+        "description": "(Dev Tool) Show debugging information.",
+        "showInHelp": False
+    },
+    "retire": {
+        "function": retire,
+        "description": "Retire and end the game if you've saved enough gold.",
+        "showInHelp": True
     }
 }
 
@@ -429,5 +601,9 @@ while True:
 
     if player_action in commands:
         commands[player_action]["function"]()  # Execute the function
+
+        # Centralized endgame check
+        check_endgame()
+
     else:
         print(f"{bad_reply}. Did you mean to 'help'?\n")
