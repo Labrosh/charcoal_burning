@@ -14,7 +14,7 @@ player_resources = {
     "wood": 0,
     "charcoal": 0,
     "kiln_status": "unbuilt",
-    "burn_time": 0,
+    "last_burn_game_tick": 0,
     "wood_limit": 10,
     "charcoal_limit": 5,
     "seen_trader_message": False,
@@ -156,7 +156,7 @@ def light_kiln():  # and we have to light a fire to get fire...
         game_ticks += 1
         show_art("light")  # Show lighting art
         print(f"\nYou light the kiln. Now you just have to wait for it to burn down...\n")
-        player_resources["burn_time"] = random.randint(6, 10)
+        player_resources["last_burn_game_tick"] = game_ticks + random.randint(6, 10)
         player_resources["kiln_status"] = "built - lit"
 
 
@@ -211,12 +211,14 @@ def check_kiln():
         print("\nYou don't have a lit kiln to check.\n")
         return
 
-    # Only advance time if there is something to check
-    if player_resources["burn_time"] > 0:
-        global game_ticks
+    global game_ticks
+    burn_time_remaining = player_resources["last_burn_game_tick"] - game_ticks
+    if burn_time_remaining > 0:
         game_ticks += 1  # Advance time for meaningful checks
-        player_resources["burn_time"] -= 1
+        burn_time_remaining -= 1
 
+    # Only advance time if there is something to check
+    if burn_time_remaining > 0:
         burn_hints = [
             (10, "Thick white smoke billows from the kiln. The wood is still releasing moisture."),
             (5, "The smoke has thinned and turned a dull gray. The fire is steady."),
@@ -225,10 +227,10 @@ def check_kiln():
         ]
 
         for time, hint in burn_hints:
-            if player_resources["burn_time"] >= time:
+            if burn_time_remaining >= time:
                 print(hint)
                 break
-    elif player_resources["burn_time"] == 0 and player_resources["kiln_status"] == "built - lit":
+    elif burn_time_remaining <= 0 and player_resources["kiln_status"] == "built - lit":
         # When burning is complete
         print("\nThe kiln is silent, and the smoke has vanished. The charcoal is ready.\n")
         player_resources["kiln_status"] = "charcoal ready"
@@ -399,7 +401,7 @@ def dev_mode():
         print(
             f"\nCharcoal storage is now full: {player_resources['charcoal']} / {player_resources['charcoal_limit']}.\n")
     elif choice == "4":
-        player_resources["burn_time"] = 1
+        player_resources["last_burn_game_tick"] = 0
         print("\nKiln burn time skipped to 1 hour.\n")
     else:
         print("\nInvalid choice. Please enter a valid number (1-4).\n")
