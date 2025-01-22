@@ -97,35 +97,48 @@ def show_intro():
 
 
 def chop_wood():
+    """
+    Handles the wood-chopping action, progresses the game time,
+    and interacts with other game systems like the kiln and trader.
+    """
     global game_ticks
     game_ticks += 1
 
+    # Progress the kiln burn time
+    progress_kiln()
+
+    # Check for trader arrival every in-game day
     if game_ticks % 24 == 0 and not player_resources.get("trader_available", False):
         trader()
 
-    wood_random = random.choice(better_axe_options if player_resources["better_axe"] else wood_options)
+    # Determine the wood roll based on the axe
+    wood_random = random.choice(
+        better_axe_options if player_resources["better_axe"] else wood_options)
 
     # Calculate available storage space
     space_left = player_resources["wood_limit"] - player_resources["wood"]
 
+    # Handle storage logic
     if space_left <= 0:
         print("\nYour wood storage is full! Consider upgrading your storage.")
-    elif wood_random > space_left:
-        # Add only the amount that fits
-        player_resources["wood"] += space_left
-        show_art("chop")
-        print(f"\nYou managed to gather {space_left} wood, but {wood_random - space_left} wood was wasted due to storage limits.")
     else:
-        # Add all the wood if there's enough space
-        player_resources["wood"] += wood_random
+        wood_collected = min(wood_random, space_left)
+        player_resources["wood"] += wood_collected
         show_art("chop")
-        print(f"\nYou managed to gather {wood_random} wood.")
 
-    # Flavor text is always shown after a chop
+        # Provide feedback for partial or full collection
+        if wood_random > space_left:
+            print(f"\nYou managed to gather {wood_collected} wood, but {wood_random - wood_collected} wood was wasted due to storage limits.")
+        else:
+            print(f"\nYou managed to gather {wood_collected} wood.")
+
+    # Show flavor text and current wood storage
     print(random.choice(chop_flavor))
     print(f"You have {player_resources['wood']} wood so far (Limit: {player_resources['wood_limit']}).\n")
 
+    # Display the current time
     display_time()
+
 
 
 def build_kiln():  # Have to have a kiln to burn logs
@@ -185,6 +198,12 @@ def collect_charcoal():
         print(f"You have {player_resources['charcoal']} charcoal so far (Limit: {player_resources['charcoal_limit']}).\n")
         input(press_enter)
 
+def progress_kiln():
+    if player_resources["kiln_status"] == "built - lit":
+        player_resources["burn_time"] -= 1
+        if player_resources["burn_time"] <= 0:
+            player_resources["kiln_status"] = "charcoal ready"
+            print("\nThe kiln has finished burning! The charcoal is ready to collect.\n")
 
 
 def upgrade_storage():
@@ -206,17 +225,16 @@ def upgrade_storage():
 
 
 def check_kiln():
+    """
+    Provides updates on the status of the kiln without advancing time or reducing burn time.
+    """
     # Check if the kiln is in a valid state
     if player_resources["kiln_status"] not in ["built - lit", "charcoal ready"]:
         print("\nYou don't have a lit kiln to check.\n")
         return
 
-    # Only advance time if there is something to check
-    if player_resources["burn_time"] > 0:
-        global game_ticks
-        game_ticks += 1  # Advance time for meaningful checks
-        player_resources["burn_time"] -= 1
-
+    # Provide hints based on the kiln's current burn time
+    if player_resources["kiln_status"] == "built - lit" and player_resources["burn_time"] > 0:
         burn_hints = [
             (10, "Thick white smoke billows from the kiln. The wood is still releasing moisture."),
             (5, "The smoke has thinned and turned a dull gray. The fire is steady."),
@@ -228,13 +246,11 @@ def check_kiln():
             if player_resources["burn_time"] >= time:
                 print(hint)
                 break
-    elif player_resources["burn_time"] == 0 and player_resources["kiln_status"] == "built - lit":
-        # When burning is complete
-        print("\nThe kiln is silent, and the smoke has vanished. The charcoal is ready.\n")
-        player_resources["kiln_status"] = "charcoal ready"
+    elif player_resources["kiln_status"] == "charcoal ready":
+        print("\nThe kiln is silent, and the smoke has vanished. The charcoal is ready to collect.\n")
     else:
-        # Inform the player there's no need to check
         print("\nThere’s nothing new to see. Be patient and let the kiln do its work.\n")
+
 
 
 def trader():
@@ -278,54 +294,82 @@ def visit_trader():
     print(personality_text)
 
     # Offer to sell charcoal
-    charcoal_available = player_resources["charcoal"]
-    amount_to_buy = random.randint(1, min(charcoal_available, 5))  # Randomize up to 5 or available
-    price_per_charcoal = random.randint(2, 5)  # Randomize price between 2 and 5 coins
-    total_price = amount_to_buy * price_per_charcoal
+    offer_to_buy_charcoal(personality_type)
 
-    print(f"The trader offers to buy {amount_to_buy} charcoal for {total_price} coins.")
-    choice = input("Do you accept the offer? (yes/no): ").strip().lower()
-
-    if choice == "yes":
-        if charcoal_available >= amount_to_buy:
-            player_resources["charcoal"] -= amount_to_buy
-            player_resources["gold"] = player_resources.get("gold", 0) + total_price
-            print(f"You sold {amount_to_buy} charcoal and earned {total_price} coins.")
-            print(f"Current charcoal: {player_resources['charcoal']}")
-            print(f"Current gold: {player_resources['gold']}\n")
-        else:
-            print("Something went wrong; you don't have enough charcoal to sell.")  # Failsafe
-    else:
-        print("The trader leaves, disappointed.\n")
-
-    # Offer the better axe, with personality-specific dialog
+    # Offer the better axe if not owned
     if not player_resources["better_axe"]:
-        if personality_type == "grumpy":
-            print("\n'You look like you could use a better axe,' the trader grumbles.")
-        elif personality_type == "cheerful":
-            print("\n'I’ve got the perfect tool for you! A better axe to make your life easier!'")
-        elif personality_type == "mysterious":
-            print("\nThe trader leans in and whispers, 'A tool for the ambitious. Interested?'")
-        elif personality_type == "talkative":
-            print("\n'Everyone’s been asking for this axe,' the trader chatters. 'Want one?'")
-        elif personality_type == "hurried":
-            print("\n'Quickly now, I’ve got a sturdy axe for sale. Take it or leave it!'")
-
-        print("The trader offers to sell you the better axe for 50 gold.")
-        axe_choice = input("Do you want to buy the better axe for 50 gold? (yes/no): ").strip().lower()
-        if axe_choice == "yes":
-            if player_resources["gold"] >= 50:
-                player_resources["gold"] -= 50
-                player_resources["better_axe"] = True
-                print("You bought the better axe! Your wood-gathering efficiency has improved.")
-            else:
-                print(
-                    f"You don't have enough gold to buy the better axe. (You have {player_resources['gold']}/50 gold.)")
-        else:
-            print("The trader shrugs and puts the axe away. 'Suit yourself.'")
+        offer_better_axe(personality_type)
 
     # Reset trader availability
     player_resources["trader_available"] = False
+
+
+def offer_to_buy_charcoal(personality_type):
+    charcoal_available = player_resources["charcoal"]
+    price_per_charcoal = random.randint(2, 5)  # Randomize price between 2 and 5 coins
+    print(f"The trader offers to buy charcoal for {price_per_charcoal} coins per piece.")
+    print(f"You currently have {charcoal_available} charcoal.")
+
+    sell_amount = input(f"How much charcoal would you like to sell? (Enter a number or 'all' to sell everything): ").strip().lower()
+
+    if sell_amount == "all":
+        sell_amount = charcoal_available
+    elif sell_amount.isdigit():
+        sell_amount = int(sell_amount)
+    else:
+        print("The trader frowns. 'If you're not selling, I’ll move on.'")
+        return
+
+    if 0 < sell_amount <= charcoal_available:
+        total_price = sell_amount * price_per_charcoal
+        player_resources["charcoal"] -= sell_amount
+        player_resources["gold"] = player_resources.get("gold", 0) + total_price
+
+        # Trader reactions based on the amount sold
+        if sell_amount >= 20:
+            print("The trader beams. 'This is the biggest haul I’ve seen in weeks!'")
+        elif sell_amount <= 2:
+            print("The trader nods. 'Every piece counts, even small ones.'")
+        else:
+            print("The trader loads your charcoal with practiced ease.")
+
+        print(f"\nYou sold {sell_amount} charcoal for {total_price} coins.")
+        print(f"Current charcoal: {player_resources['charcoal']}")
+        print(f"Current gold: {player_resources['gold']}\n")
+    else:
+        print("\nThe trader shakes his head. 'I can’t buy that much.'")
+
+
+def offer_better_axe(personality_type):
+    print("\nThe trader pauses and says, 'I’ve got something that might interest you.'")
+
+    if personality_type == "grumpy":
+        print("'You look like you could use a better axe,' the trader grumbles.")
+    elif personality_type == "cheerful":
+        print("'This axe will save you time! Think of all the extra wood you’ll gather!'")
+    elif personality_type == "mysterious":
+        print("The trader leans in and whispers, 'A tool for the ambitious. Interested?'")
+    elif personality_type == "talkative":
+        print("'Everyone’s been asking for this axe,' the trader chatters. 'Want one?'")
+    elif personality_type == "hurried":
+        print("'Quickly now, I’ve got a sturdy axe for sale. Take it or leave it!'")
+
+    print("The trader offers to sell you the better axe for 25 gold and 10 wood.")
+    axe_choice = input("Do you want to buy the better axe? (yes/no): ").strip().lower()
+    if axe_choice == "yes":
+        if player_resources["gold"] >= 25 and player_resources["wood"] >= 10:
+            player_resources["gold"] -= 25
+            player_resources["wood"] -= 10
+            player_resources["better_axe"] = True
+            print("You bought the better axe! Your wood-gathering efficiency has improved.")
+        else:
+            print(
+                f"You don't have enough resources to buy the better axe. (You need 25 gold and 10 wood.)"
+            )
+    else:
+        print("The trader shrugs and puts the axe away. 'Suit yourself.'")
+
+
 
 
 def check_endgame():
